@@ -1,12 +1,32 @@
-dist: xenial
 language: cpp
+sudo: false
 
-install:
-  - sudo apt-get update -qq
-  - sudo apt-get install -y cmake libboost-system-dev libboost-program-options-dev libssl-dev libmysqlclient-dev realpath
-
+addons:
+  apt:
+    packages:
+    - cmake
+before_install:
+  - SRCDIR=$PWD
+  - echo $SRCDIR
+  - curl -O -L https://dl.bintray.com/boostorg/release/1.69.0/source/boost_1_69_0.tar.bz2
+  - tar xf boost_1_69_0.tar.bz2
+  - pushd boost_1_69_0
+  - bash bootstrap.sh
+  - ./b2 --stagedir=$SRCDIR/boost-stage architecture=x86 address-model=64 toolset=gcc variant=release link=static threading=multi --with-system --with-date_time --with-program_options stage
+  - popd
+  - curl -O -L https://www.openssl.org/source/openssl-1.1.1b.tar.gz
+  - tar xf openssl-1.1.1b.tar.gz
+  - pushd openssl-1.1.1b
+  - ./config --prefix=$SRCDIR/openssl-install --openssldir=$SRCDIR/openssl-install no-shared
+  - make install_sw install_ssldirs
+  - popd
 script:
-  - cmake -DCMAKE_INSTALL_PREFIX=/usr -DSYSTEMD_SERVICE=ON .
-  - sudo make install
-  - ./trojan -v
-  - ctest
+  # missing dl for static openssl
+  - echo "target_link_libraries(trojan dl)" >> CMakeLists.txt
+  - SRCDIR=$PWD
+  - echo $SRCDIR
+  - mkdir build
+  - pushd build
+  - cmake -DCMAKE_INSTALL_PREFIX:PATH=$SRCDIR/trojan-bin -DENABLE_MYSQL=OFF -DSYSTEMD_SERVICE=OFF -DBOOST_INCLUDEDIR=$SRCDIR/boost_1_69_0 -DBOOST_LIBRARYDIR=$SRCDIR/boost-stage/lib -DBoost_NO_SYSTEM_PATHS=ON -DBoost_USE_DEBUG_LIBS=OFF -DBoost_USE_RELEASE_LIBS=ON -DBoost_USE_STATIC_LIBS=ON -DOPENSSL_ROOT_DIR=$SRCDIR/openssl-install ..
+  - make install
+  - ldd $SRCDIR/trojan-bin/bin/trojan
